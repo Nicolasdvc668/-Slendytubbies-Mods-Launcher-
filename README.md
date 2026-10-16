@@ -15,3 +15,4 @@ Salve numa pasta de fácil acesso
 Execute — ele procura o jogo sozinho!
 Se não encontrar, selecione manualmente o Slendytubbies.exe no seu PC
 Pronto! É só jogar! 🎉
+ o arquivo ceto e o .zip
