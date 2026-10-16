@@ -1,0 +1,425 @@
+import os
+import sys
+import json
+import webbrowser
+import subprocess
+import threading
+from pathlib import Path
+import requests
+import customtkinter as ctk
+from tkinter import messagebox, filedialog
+
+# ==================================================
+# CONFIGURAÇÕES
+# ==================================================
+ARQUIVO_CONFIG = "launcher_config.json"
+PASTA_MODS = "mods"
+PASTA_BACKUPS = "backups"
+SITE_OFICIAL = "https://zeoworks.com/games/slendytubbies3"
+VERSAO_LAUNCHER = "2.0.0"
+URL_VERSAO_GITHUB = "https://api.github.com/repos/seu-usuario/seu-repo/releases/latest"
+
+# Lista de versões do jogo
+VERSOES_JOGO = [
+    {"nome": "Slendytubbies 3 - v2.2", "disponivel_site": True, "arquivo_executavel": "Slendytubbies.exe"},
+    {"nome": "Slendytubbies 3 - v2.1", "disponivel_site": True, "arquivo_executavel": "Slendytubbies.exe"},
+    {"nome": "Slendytubbies 2", "disponivel_site": False, "arquivo_executavel": "Slendytubbies 2.exe"},
+    {"nome": "Slendytubbies 1", "disponivel_site": False, "arquivo_executavel": "Slendytubbies 1.exe"},
+]
+
+# Lista de mods disponíveis
+MODS_DISPONIVEIS = [
+    {"nome": "👾 Novos Monstros", "versao": "1.0", "descricao": "Adiciona novos inimigos e personagens"},
+    {"nome": "🗺️ Mapa Extendido", "versao": "1.2", "descricao": "Expande a área do jogo com novas regiões"},
+    {"nome": "🔫 Mod de Armas", "versao": "2.0", "descricao": "Novas armas e itens para usar"},
+    {"nome": "🎨 Texturas HD", "versao": "1.5", "descricao": "Melhora os gráficos do jogo"},
+    {"nome": "🌙 Noite Mais Escura", "versao": "1.1", "descricao": "Deixa a noite mais assustadora!"},
+]
+
+# ==================================================
+# CLASSE PRINCIPAL — DESIGN MELHORADO
+# ==================================================
+class LauncherSlendytubbies:
+    def __init__(self):
+        # 🎨 TEMA ESCURO ESTILO JOGO
+        ctk.set_appearance_mode("dark")
+        ctk.set_default_color_theme("green")
+        
+        self.jogo_caminho = ""
+        self.jogo_encontrado = False
+        self.versao_selecionada = None
+        self.mods_ativos = []
+        self.config = self.carregar_config()
+        
+        # Cria pastas
+        Path(PASTA_MODS).mkdir(exist_ok=True)
+        Path(PASTA_BACKUPS).mkdir(exist_ok=True)
+        
+        # 🖼️ JANELA PRINCIPAL — TAMANHO MAIOR E MAIS BONITA
+        self.janela = ctk.CTk()
+        self.janela.title("🎮 Slendytubbies — Mods Launcher")
+        self.janela.geometry("850x600")
+        self.janela.minsize(750, 550)
+        
+        # Verifica atualização
+        self.verificar_atualizacoes()
+        
+        # Cria a interface
+        self.criar_interface()
+        
+        # Procura o jogo
+        self.procurar_jogo_automaticamente()
+
+    # ==================================================
+    # SISTEMA DE CONFIGURAÇÕES
+    # ==================================================
+    def carregar_config(self):
+        if os.path.exists(ARQUIVO_CONFIG):
+            try:
+                with open(ARQUIVO_CONFIG, "r", encoding="utf-8") as f:
+                    return json.load(f)
+            except:
+                pass
+        return {"caminho_jogo": "", "mods_ativos": [], "ultima_versao": ""}
+    
+    def salvar_config(self):
+        with open(ARQUIVO_CONFIG, "w", encoding="utf-8") as f:
+            json.dump({
+                "caminho_jogo": self.jogo_caminho,
+                "mods_ativos": self.mods_ativos,
+                "ultima_versao": self.versao_selecionada
+            }, f, indent=4)
+
+    # ==================================================
+    # VERIFICAÇÃO DE ATUALIZAÇÕES
+    # ==================================================
+    def verificar_atualizacoes(self):
+        try:
+            resposta = requests.get(URL_VERSAO_GITHUB, timeout=5)
+            if resposta.status_code == 200:
+                dados = resposta.json()
+                versao_nova = dados["tag_name"]
+                if versao_nova != VERSAO_LAUNCHER:
+                    self.mostrar_janela_atualizacao(versao_nova, dados["html_url"])
+        except:
+            pass
+    
+    def mostrar_janela_atualizacao(self, versao_nova, link_download):
+        resposta = messagebox.askyesno(
+            "🔄 Atualização Disponível!",
+            f"Está disponível a versão {versao_nova} do Launcher!\n\nQuer atualizar agora?"
+        )
+        if resposta:
+            webbrowser.open(link_download)
+            self.janela.quit()
+            sys.exit()
+
+    # ==================================================
+    # 🎨 INTERFACE PRINCIPAL — DESIGN MELHORADO
+    # ==================================================
+    def criar_interface(self):
+        # 🏷️ CABEÇALHO BONITO
+        cabecalho = ctk.CTkFrame(self.janela, height=100, corner_radius=0)
+        cabecalho.pack(fill="x", side="top")
+        cabecalho.pack_propagate(False)
+        
+        titulo = ctk.CTkLabel(
+            cabecalho, 
+            text="🎮 Slendytubbies — Mods Launcher",
+            font=ctk.CTkFont(size=26, weight="bold")
+        )
+        titulo.pack(pady=(20, 5))
+        
+        subtitulo = ctk.CTkLabel(
+            cabecalho,
+            text="O melhor lugar pra sua experiência de jogo!",
+            font=ctk.CTkFont(size=12),
+            text_color="#90EE90"
+        )
+        subtitulo.pack()
+        
+        # 📋 ABAS MAIS BONITAS
+        self.abas = ctk.CTkTabview(self.janela, corner_radius=8)
+        self.abas.pack(padx=20, pady=(10, 20), fill="both", expand=True)
+        
+        self.aba_inicio = self.abas.add("🏠 Início")
+        self.aba_mods = self.abas.add("📦 Mods")
+        self.aba_versoes = self.abas.add("🕰️ Versões")
+        self.aba_comunidade = self.abas.add("🌐 Comunidade")
+        self.aba_sobre = self.abas.add("ℹ️ Sobre")
+        
+        self.criar_aba_inicio()
+        self.criar_aba_mods()
+        self.criar_aba_versoes()
+        self.criar_aba_comunidade()
+        self.criar_aba_sobre()
+        
+        # 📊 RODAPÉ
+        rodape = ctk.CTkFrame(self.janela, height=40, corner_radius=0)
+        rodape.pack(fill="x", side="bottom")
+        rodape.pack_propagate(False)
+        
+        ctk.CTkLabel(
+            rodape,
+            text=f"Versão do Launcher: {VERSAO_LAUNCHER} | Feito com ❤️ para a comunidade",
+            font=ctk.CTkFont(size=10),
+            text_color="gray"
+        ).pack(pady=8)
+
+    # ==================================================
+    # 🏠 ABA INÍCIO — MAIS BONITA
+    # ==================================================
+    def criar_aba_inicio(self):
+        frame = self.aba_inicio
+        
+        # 📂 ÁREA DE STATUS
+        quadro_status = ctk.CTkFrame(frame)
+        quadro_status.pack(pady=30, padx=30, fill="x")
+        
+        self.label_status = ctk.CTkLabel(
+            quadro_status, 
+            text="🔍 Procurando o jogo...",
+            font=ctk.CTkFont(size=16)
+        )
+        self.label_status.pack(pady=25)
+        
+        # ▶ BOTÃO JOGAR GRANDE
+        self.botao_jogar = ctk.CTkButton(
+            frame, text="▶ JOGAR AGORA!", 
+            font=ctk.CTkFont(size=22, weight="bold"),
+            height=70, corner_radius=12,
+            command=self.abrir_jogo, state="disabled"
+        )
+        self.botao_jogar.pack(pady=10)
+        
+        # ⬇ BOTÕES SECUNDÁRIOS
+        botoes_linha = ctk.CTkFrame(frame, fg_color="transparent")
+        botoes_linha.pack(pady=15)
+        
+        ctk.CTkButton(
+            botoes_linha, text="⬇ Baixar Jogo Oficial",
+            font=ctk.CTkFont(size=14), height=45,
+            command=lambda: webbrowser.open(SITE_OFICIAL)
+        ).grid(row=0, column=0, padx=10)
+        
+        ctk.CTkButton(
+            botoes_linha, text="📂 Selecionar Jogo Manualmente",
+            font=ctk.CTkFont(size=14), height=45,
+            command=self.selecionar_jogo_manual
+        ).grid(row=0, column=1, padx=10)
+
+    # ==================================================
+    # PROCURAR JOGO
+    # ==================================================
+    def procurar_jogo_automaticamente(self):
+        if self.config.get("caminho_jogo") and os.path.exists(self.config["caminho_jogo"]):
+            self.jogo_caminho = self.config["caminho_jogo"]
+            self.jogo_encontrado = True
+            self.atualizar_status_jogo()
+            return
+        
+        pastas_busca = [
+            str(Path.home() / "Desktop"),
+            str(Path.home() / "Downloads"),
+            "C:/Program Files",
+            "C:/Program Files (x86)"
+        ]
+        
+        for pasta in pastas_busca:
+            if not os.path.exists(pasta):
+                continue
+            for raiz, pastas_arq, arquivos in os.walk(pasta):
+                if "Slendytubbies.exe" in arquivos:
+                    self.jogo_caminho = os.path.join(raiz, "Slendytubbies.exe")
+                    self.jogo_encontrado = True
+                    self.salvar_config()
+                    self.atualizar_status_jogo()
+                    return
+        
+        self.label_status.configure(text="❌ Jogo não encontrado — selecione manualmente", text_color="#ff6b6b")
+    
+    def selecionar_jogo_manual(self):
+        caminho = filedialog.askopenfilename(
+            title="Selecione o executável do jogo",
+            filetypes=[("Arquivo Executável", "*.exe")]
+        )
+        if caminho:
+            self.jogo_caminho = caminho
+            self.jogo_encontrado = True
+            self.salvar_config()
+            self.atualizar_status_jogo()
+    
+    def atualizar_status_jogo(self):
+        self.label_status.configure(text="✅ Jogo encontrado — Pronto pra jogar!", text_color="#4ade80")
+        self.botao_jogar.configure(state="normal")
+    
+    def abrir_jogo(self):
+        if self.jogo_encontrado and os.path.exists(self.jogo_caminho):
+            pasta_jogo = os.path.dirname(self.jogo_caminho)
+            subprocess.Popen(self.jogo_caminho, cwd=pasta_jogo)
+            self.janela.destroy()
+        else:
+            messagebox.showerror("Erro", "Jogo não encontrado. Selecione a localização correta.")
+
+    # ==================================================
+    # 📦 ABA DE MODS — MAIS BONITA
+    # ==================================================
+    def criar_aba_mods(self):
+        frame = self.aba_mods
+        
+        ctk.CTkLabel(
+            frame, text="📦 Biblioteca de Mods",
+            font=ctk.CTkFont(size=20, weight="bold")
+        ).pack(pady=(15, 5))
+        
+        ctk.CTkLabel(
+            frame, text="Clique para ativar ou desativar cada mod",
+            text_color="gray"
+        ).pack(pady=(0, 15))
+        
+        # LISTA DE MODS BONITA
+        for mod in MODS_DISPONIVEIS:
+            quadro = ctk.CTkFrame(frame)
+            quadro.pack(pady=6, padx=20, fill="x")
+            
+            info = ctk.CTkFrame(quadro, fg_color="transparent")
+            info.pack(side="left", padx=15, pady=10, fill="both", expand=True)
+            
+            ctk.CTkLabel(
+                info, text=mod["nome"],
+                font=ctk.CTkFont(weight="bold", size=13)
+            ).pack(anchor="w")
+            
+            ctk.CTkLabel(
+                info, text=f"v{mod['versao']} — {mod['descricao']}",
+                text_color="gray", font=ctk.CTkFont(size=11)
+            ).pack(anchor="w")
+            
+            botao = ctk.CTkButton(
+                quadro, text="Ativar", width=100, height=32,
+                command=lambda m=mod, q=quadro: self.alternar_mod(m, q)
+            )
+            botao.pack(side="right", padx=15, pady=10)
+            mod["botao"] = botao
+    
+    def alternar_mod(self, mod, quadro):
+        if mod["nome"] in self.mods_ativos:
+            self.mods_ativos.remove(mod["nome"])
+            mod["botao"].configure(text="Ativar", fg_color="#2FA572")
+            messagebox.showinfo("✅ Desativado", f"{mod['nome']} foi desativado!")
+        else:
+            self.mods_ativos.append(mod["nome"])
+            mod["botao"].configure(text="Desativar", fg_color="#d35400")
+            messagebox.showinfo("✅ Ativado!", f"{mod['nome']} está ativo!\n\nColoque os arquivos do mod na pasta do jogo.")
+        self.salvar_config()
+
+    # ==================================================
+    # 🕰️ ABA DE VERSÕES
+    # ==================================================
+    def criar_aba_versoes(self):
+        frame = self.aba_versoes
+        
+        ctk.CTkLabel(
+            frame, text="🕰️ Versões do Jogo",
+            font=ctk.CTkFont(size=20, weight="bold")
+        ).pack(pady=(15, 5))
+        
+        ctk.CTkLabel(
+            frame, text="Escolha qual versão deseja usar",
+            text_color="gray"
+        ).pack(pady=(0, 15))
+        
+        for versao in VERSOES_JOGO:
+            quadro = ctk.CTkFrame(frame)
+            quadro.pack(pady=6, padx=20, fill="x")
+            
+            ctk.CTkLabel(
+                quadro, text=versao["nome"],
+                font=ctk.CTkFont(weight="bold", size=13)
+            ).pack(side="left", padx=15, pady=12)
+            
+            if versao["disponivel_site"]:
+                ctk.CTkButton(
+                    quadro, text="⬇ Baixar do Site Oficial",
+                    command=lambda v=versao: webbrowser.open(SITE_OFICIAL)
+                ).pack(side="right", padx=15, pady=10)
+            else:
+                ctk.CTkLabel(
+                    quadro, text="🔒 Indisponível", text_color="gray"
+                ).pack(side="right", padx=15, pady=10)
+
+    # ==================================================
+    # 🌐 ABA COMUNIDADE
+    # ==================================================
+    def criar_aba_comunidade(self):
+        frame = self.aba_comunidade
+        
+        ctk.CTkLabel(
+            frame, text="🌐 Comunidade & Links",
+            font=ctk.CTkFont(size=20, weight="bold")
+        ).pack(pady=(30, 20))
+        
+        links = [
+            ("🎮 Site Oficial do Jogo", SITE_OFICIAL),
+            ("📂 GitHub do Projeto", "https://github.com"),
+            ("💬 Discord da Comunidade", "https://discord.com"),
+            ("📺 Canal no YouTube", "https://youtube.com"),
+        ]
+        
+        for nome, link in links:
+            botao = ctk.CTkButton(
+                frame, text=nome, font=ctk.CTkFont(size=14),
+                height=45, command=lambda l=link: webbrowser.open(l)
+            )
+            botao.pack(pady=8, padx=40, fill="x")
+
+    # ==================================================
+    # ℹ️ ABA SOBRE
+    # ==================================================
+    def criar_aba_sobre(self):
+        frame = self.aba_sobre
+        
+        ctk.CTkLabel(
+            frame, text="ℹ️ Sobre este Launcher",
+            font=ctk.CTkFont(size=22, weight="bold")
+        ).pack(pady=(30, 20))
+        
+        info = """
+🎮 Launcher de Mods — Slendytubbies
+Versão: """ + VERSAO_LAUNCHER + """
+
+📌 Este é um launcher feito por fãs.
+NÃO é um produto oficial da ZeoWorks.
+
+⚠️ Você PRECISA ter o jogo original instalado
+para usar os mods. O jogo é gratuito no site oficial.
+
+💡 Funcionalidades:
+• ✅ Detecção automática do jogo
+• ✅ Gerenciador de mods com ativar/desativar
+• ✅ Seletor de versões do jogo
+• ✅ Aviso de atualizações
+• ✅ Links da comunidade
+
+Feito com ❤️ para a comunidade de fãs!
+        """
+        
+        ctk.CTkLabel(frame, text=info, justify="center", font=ctk.CTkFont(size=12)).pack(pady=10)
+        
+        ctk.CTkButton(
+            frame, text="🌐 Visitar Site Oficial do Jogo",
+            command=lambda: webbrowser.open(SITE_OFICIAL)
+        ).pack(pady=10)
+
+    # ==================================================
+    # EXECUTAR
+    # ==================================================
+    def rodar(self):
+        self.janela.mainloop()
+
+# ==================================================
+# INICIAR
+# ==================================================
+if __name__ == "__main__":
+    app = LauncherSlendytubbies()
+    app.rodar()
